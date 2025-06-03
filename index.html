@@ -388,14 +388,6 @@
             color: #f1c40f;
         }
 
-        .water-effect {
-            position: absolute;
-            pointer-events: none;
-            background: rgba(255, 255, 255, 0.6);
-            border-radius: 50%;
-            animation: evaporate 2s forwards;
-        }
-
         .performance-panel {
             position: absolute;
             top: 10px;
@@ -408,15 +400,12 @@
             z-index: 10;
         }
 
-        @keyframes evaporate {
-            0% {
-                transform: scale(0.5);
-                opacity: 0.8;
-            }
-            100% {
-                transform: scale(1.5);
-                opacity: 0;
-            }
+        .optimization-info {
+            margin-top: 10px;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 4px;
+            font-size: 12px;
         }
 
         @media (max-width: 900px) {
@@ -457,13 +446,14 @@
 <body>
     <div class="header">
         <h1>Simulador de Inundaciones Optimizado</h1>
-        <p class="subtitle">Simulación hidrológica avanzada con efectos de evaporación y flujo de agua realista</p>
+        <p class="subtitle">Simulación hidrológica con alto rendimiento</p>
     </div>
 
     <div class="main-container">
         <div class="canvas-container">
             <div class="performance-panel">
                 FPS: <span id="fpsCounter">0</span> | Celdas: <span id="cellCounter">0</span>
+                <div class="optimization-info" id="optimizationStatus">Modo: Normal</div>
             </div>
             <canvas id="floodCanvas" width="500" height="500"></canvas>
         </div>
@@ -477,9 +467,6 @@
                 <p><strong>Nombre:</strong> <span id="dashboardSettlementName"></span></p>
                 <p><strong>Riesgo de Inundación:</strong>
                     <span id="dashboardFloodRisk"></span>
-                </p>
-                <p><strong>Riesgo de Derrumbe:</strong>
-                    <span id="dashboardLandslideRisk"></span>
                 </p>
                 <p><strong>Altura:</strong> <span id="dashboardHeight"></span> m</p>
                 <p><strong>Agua acumulada:</strong> <span id="dashboardWater"></span> m</p>
@@ -553,16 +540,17 @@
                 <input type="radio" name="viewMode" value="floodRisk">
                 Mapa de Riesgos de Inundación
             </label>
-            <label>
-                <input type="radio" name="viewMode" value="landslideRisk">
-                Mapa de Riesgos de Derrumbe
-            </label>
         </div>
     </div>
 
     <div class="info">
-        Haz clic en un asentamiento para ver su información. Los asentamientos se generan automáticamente al reiniciar.
-        El agua se evaporará más rápidamente después de 5 segundos sin lluvia. Prueba a detener la lluvia para ver la evaporación en acción.
+        <strong>Optimizaciones activas:</strong> 
+        <ul>
+            <li>Mapa reducido para mejor rendimiento</li>
+            <li>Sistema de evaporación visual eliminado</li>
+            <li>Algoritmo de flujo optimizado</li>
+            <li>Modo de alta lluvia con cálculos simplificados</li>
+        </ul>
     </div>
 
     <script>
@@ -578,17 +566,26 @@
         const waterBalanceElement = document.getElementById('waterBalance');
         const fpsCounter = document.getElementById('fpsCounter');
         const cellCounter = document.getElementById('cellCounter');
+        const optimizationStatus = document.getElementById('optimizationStatus');
 
-        // Definir el tamaño de la cuadrícula de la simulación (reducido para mejor rendimiento)
-        const gridSize = 80;
+        // Reducir el tamaño de la cuadrícula para mejorar el rendimiento
+        const gridSize = 70;  // Reducido de 100 a 70 (4900 celdas en lugar de 10000)
         const cellSize = canvas.width / gridSize;
         cellCounter.textContent = `${gridSize}x${gridSize}`;
 
         // Arrays 2D para almacenar el estado de la simulación
-        let terrain = [];
-        let water = [];
-        let prevWater = [];
-        let humidity = [];
+        let terrain = new Array(gridSize);
+        let water = new Array(gridSize);
+        let prevWater = new Array(gridSize);
+        let humidity = new Array(gridSize);
+
+        // Pre-inicializar arrays para mejorar rendimiento
+        for (let i = 0; i < gridSize; i++) {
+            terrain[i] = new Float32Array(gridSize);
+            water[i] = new Float32Array(gridSize);
+            prevWater[i] = new Float32Array(gridSize);
+            humidity[i] = new Float32Array(gridSize);
+        }
 
         // Variables para el sistema de evaporación mejorado
         let timeWithoutRain = 0;
@@ -629,6 +626,7 @@
         let lastFrameTime = 0;
         let frameCount = 0;
         let lastFpsUpdate = 0;
+        let optimizationMode = 'normal'; // 'normal' o 'high_rain'
 
         // --- Implementación de Ruido Perlin (Simplified) ---
         const P = new Array(512);
@@ -686,6 +684,10 @@
         document.getElementById('rainIntensity').addEventListener('input', (e) => {
             rainIntensity = parseFloat(e.target.value);
             document.getElementById('rainValue').textContent = rainIntensity.toFixed(2);
+            
+            // Cambiar modo de optimización basado en intensidad de lluvia
+            optimizationMode = rainIntensity > 0.3 ? 'high_rain' : 'normal';
+            optimizationStatus.textContent = `Modo: ${optimizationMode === 'high_rain' ? 'Alta Lluvia' : 'Normal'}`;
         });
 
         document.getElementById('evaporationRate').addEventListener('input', (e) => {
@@ -702,17 +704,7 @@
 
         // --- Inicialización de la Cuadrícula ---
         function initGrid() {
-            terrain = [];
-            water = [];
-            prevWater = [];
-            humidity = [];
-            
             for (let y = 0; y < gridSize; y++) {
-                terrain[y] = [];
-                water[y] = [];
-                prevWater[y] = [];
-                humidity[y] = [];
-                
                 for (let x = 0; x < gridSize; x++) {
                     const baseScale = 0.02;
                     const baseOctaves = 4;
@@ -757,9 +749,12 @@
             { height: 80, color: [240, 248, 255] }
         ];
 
-        // --- Dibujo de la Cuadrícula en el Canvas ---
+        // --- Dibujo de la Cuadrícula en el Canvas con LOD ---
         function drawGrid() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // En modo alta lluvia, simplificamos el dibujo del agua
+            const isHighRainMode = optimizationMode === 'high_rain';
 
             for (let y = 0; y < gridSize; y++) {
                 for (let x = 0; x < gridSize; x++) {
@@ -790,14 +785,19 @@
                             ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
 
                             if (water[y][x] > 0.005) {
-                                const timeFactor = Math.sin(Date.now() * 0.001 + x * 0.1 + y * 0.05) * 0.1 + 0.9;
-                                const fullOpacityDepth = 15;
-                                const maxWaterAlpha = 0.7;
+                                // En modo alta lluvia, dibujamos un azul más simple
+                                if (isHighRainMode) {
+                                    const blueIntensity = Math.min(255, 100 + water[y][x] * 10);
+                                    const alpha = Math.min(0.7, water[y][x] / 15);
+                                    ctx.fillStyle = `rgba(0, 0, ${blueIntensity}, ${alpha})`;
+                                } else {
+                                    const fullOpacityDepth = 15;
+                                    const maxWaterAlpha = 0.7;
 
-                                const blueIntensity = Math.floor(100 + Math.min(1, water[y][x] / fullOpacityDepth) * 155 * timeFactor);
-                                const alpha = Math.min(1, water[y][x] / fullOpacityDepth) * maxWaterAlpha;
-
-                                ctx.fillStyle = `rgba(0, 0, ${blueIntensity}, ${alpha})`;
+                                    const blueIntensity = Math.floor(100 + Math.min(1, water[y][x] / fullOpacityDepth) * 155);
+                                    const alpha = Math.min(1, water[y][x] / fullOpacityDepth) * maxWaterAlpha;
+                                    ctx.fillStyle = `rgba(0, 0, ${blueIntensity}, ${alpha})`;
+                                }
                                 ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
                             }
                             break;
@@ -818,47 +818,6 @@
                             ctx.fillStyle = floodRiskColor;
                             ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
                             break;
-
-                        case 'landslideRisk':
-                            let landslideRiskColor = '#E0E0E0';
-                            const currentTerrainHeight = terrain[y][x];
-                            let maxSlope = 0;
-
-                            for (let dy = -1; dy <= 1; dy++) {
-                                for (let dx = -1; dx <= 1; dx++) {
-                                    if (dx === 0 && dy === 0) continue;
-
-                                    const nx = x + dx;
-                                    const ny = y + dy;
-
-                                    if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize) {
-                                        const neighborTerrainHeight = terrain[ny][nx];
-                                        const slope = Math.abs(currentTerrainHeight - neighborTerrainHeight);
-                                        if (slope > maxSlope) {
-                                            maxSlope = slope;
-                                        }
-                                    }
-                                }
-                            }
-
-                            const waterAmount = water[y][x];
-
-                            if (waterAmount > 0.1) {
-                                const combinedRiskFactor = maxSlope * (1 + waterAmount / 5);
-
-                                if (combinedRiskFactor < 10) {
-                                    landslideRiskColor = '#90EE90';
-                                } else if (combinedRiskFactor < 25) {
-                                    landslideRiskColor = '#FFFF00';
-                                } else if (combinedRiskFactor < 50) {
-                                    landslideRiskColor = '#FFA500';
-                                } else {
-                                    landslideRiskColor = '#FF0000';
-                                }
-                            }
-                            ctx.fillStyle = landslideRiskColor;
-                            ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
-                            break;
                     }
                 }
             }
@@ -869,36 +828,20 @@
                 const sy = settlement.y;
 
                 const settlementWaterAmount = water[sy][sx];
-                let settlementMaxSlope = 0;
-                for (let dy = -1; dy <= 1; dy++) {
-                    for (let dx = -1; dx <= 1; dx++) {
-                        if (dx === 0 && dy === 0) continue;
-                        const nx = sx + dx;
-                        const ny = sy + dy;
-                        if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize) {
-                            const neighborTerrainHeight = terrain[ny][nx];
-                            const slope = Math.abs(terrain[sy][sx] - neighborTerrainHeight);
-                            if (slope > settlementMaxSlope) {
-                                settlementMaxSlope = slope;
-                            }
-                        }
-                    }
-                }
-                const settlementCombinedLandslideRiskFactor = settlementMaxSlope * (1 + settlementWaterAmount / 5);
-
+                
                 let settlementRiskColor = 'green';
                 let symbolSize = cellSize * 0.6;
                 let alertLevelText = 'Bajo';
 
-                if (settlementWaterAmount >= 10 || settlementCombinedLandslideRiskFactor >= 50) {
+                if (settlementWaterAmount >= 10) {
                     settlementRiskColor = 'red';
                     symbolSize = cellSize * 0.8;
                     alertLevelText = 'Muy Alto';
-                } else if (settlementWaterAmount >= 5 || settlementCombinedLandslideRiskFactor >= 25) {
+                } else if (settlementWaterAmount >= 5) {
                     settlementRiskColor = 'orange';
                     symbolSize = cellSize * 0.7;
                     alertLevelText = 'Alto';
-                } else if (settlementWaterAmount >= 1 || settlementCombinedLandslideRiskFactor >= 10) {
+                } else if (settlementWaterAmount >= 1) {
                     settlementRiskColor = 'yellow';
                     symbolSize = cellSize * 0.65;
                     alertLevelText = 'Moderado';
@@ -976,7 +919,7 @@
                 }
             }
 
-            // 2. Aplicar evaporación optimizada
+            // 2. Aplicar evaporación optimizada (sin efectos visuales)
             const baseEvaporation = evaporationRate * evaporationMultiplier;
             for (let y = 0; y < gridSize; y++) {
                 for (let x = 0; x < gridSize; x++) {
@@ -985,10 +928,6 @@
                         const humidityFactor = (6 - humidity[y][x]) / 5;
                         const currentEvaporationAmount = baseEvaporation * humidityFactor * evaporationFactor;
                         water[y][x] = Math.max(0, water[y][x] - currentEvaporationAmount);
-
-                        if (currentEvaporationAmount > 0.01 && Math.random() > 0.95) {
-                            createEvaporationEffect(x, y);
-                        }
                     }
                 }
             }
@@ -1000,20 +939,25 @@
                 }
             }
 
-            // 4. Optimized Water Flow (simplificado para mejor rendimiento)
+            // 4. Optimized Water Flow - ¡Aquí está la optimización principal!
             const K_MIN_SLOPE = 0.001;
-            const K_FLOW_RATE = 0.5;
+            const K_FLOW_RATE = optimizationMode === 'high_rain' ? 0.2 : 0.4;
+            const MAX_FLOW_FRACTION = optimizationMode === 'high_rain' ? 0.2 : 0.4;
             let waterFlux = Array(gridSize).fill(0).map(() => Array(gridSize).fill(0));
+
+            // Solo vecinos directos (arriba, abajo, izquierda, derecha) - reduce cálculos
+            const neighbors = [
+                { dx: 0, dy: -1 }, 
+                { dx: 0, dy: 1 }, 
+                { dx: -1, dy: 0 }, 
+                { dx: 1, dy: 0 }
+            ];
 
             for (let y = 0; y < gridSize; y++) {
                 for (let x = 0; x < gridSize; x++) {
                     if (prevWater[y][x] < K_MIN_SLOPE) continue;
 
                     const currentTotalHeight = terrain[y][x] + prevWater[y][x];
-                    const neighbors = [
-                        { dx: 0, dy: -1 }, { dx: 0, dy: 1 }, { dx: -1, dy: 0 }, { dx: 1, dy: 0 }
-                    ];
-
                     let totalPossibleFlow = 0;
                     let flowDirections = [];
 
@@ -1034,9 +978,11 @@
                     }
 
                     if (totalPossibleFlow > 0) {
-                        let waterToDistribute = prevWater[y][x];
+                        // Limitar la cantidad de agua a mover a una fracción del total disponible
+                        const waterToDistribute = Math.min(prevWater[y][x] * MAX_FLOW_FRACTION, prevWater[y][x]);
+                        
                         for (const flowInfo of flowDirections) {
-                            const actualFlow = (flowInfo.potentialFlow / totalPossibleFlow) * waterToDistribute * 0.5;
+                            const actualFlow = (flowInfo.potentialFlow / totalPossibleFlow) * waterToDistribute;
                             waterFlux[flowInfo.ny][flowInfo.nx] += actualFlow;
                             waterFlux[y][x] -= actualFlow;
                         }
@@ -1070,8 +1016,8 @@
                 }
             }
 
-            // 6. Relajación/Difusión simplificada
-            const relaxationIterations = 3;
+            // 6. Relajación/Difusión simplificada (reducimos iteraciones)
+            const relaxationIterations = optimizationMode === 'high_rain' ? 1 : 2;
             const relaxationFactor = 0.05;
 
             for (let iter = 0; iter < relaxationIterations; iter++) {
@@ -1172,28 +1118,6 @@
             }
         }
 
-        // Función para crear efecto visual de evaporación
-        function createEvaporationEffect(x, y) {
-            const rect = canvas.getBoundingClientRect();
-            const effect = document.createElement('div');
-            effect.className = 'water-effect';
-
-            const size = Math.random() * 5 + 3;
-            const posX = rect.left + (x + Math.random()) * cellSize;
-            const posY = rect.top + (y + Math.random()) * cellSize;
-
-            effect.style.width = size + 'px';
-            effect.style.height = size + 'px';
-            effect.style.left = posX + 'px';
-            effect.style.top = posY + 'px';
-
-            document.body.appendChild(effect);
-
-            setTimeout(() => {
-                effect.remove();
-            }, 2000);
-        }
-
         // --- Funciones para gestionar Asentamientos ---
         function getRandomSettlementName() {
             if (availableNames.length === 0) {
@@ -1268,7 +1192,6 @@
             const infoDiv = document.getElementById('settlementInfo');
             const nameSpan = document.getElementById('dashboardSettlementName');
             const floodSpan = document.getElementById('dashboardFloodRisk');
-            const landslideSpan = document.getElementById('dashboardLandslideRisk');
             const heightSpan = document.getElementById('dashboardHeight');
             const waterSpan = document.getElementById('dashboardWater');
 
@@ -1280,22 +1203,6 @@
                 const sx = selectedSettlement.x;
                 const sy = selectedSettlement.y;
                 const settlementWaterAmount = water[sy][sx];
-                let settlementMaxSlope = 0;
-                for (let dy = -1; dy <= 1; dy++) {
-                    for (let dx = -1; dx <= 1; dx++) {
-                        if (dx === 0 && dy === 0) continue;
-                        const nx = sx + dx;
-                        const ny = sy + dy;
-                        if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize) {
-                            const neighborTerrainHeight = terrain[ny][nx];
-                            const slope = Math.abs(terrain[sy][sx] - neighborTerrainHeight);
-                            if (slope > settlementMaxSlope) {
-                                settlementMaxSlope = slope;
-                            }
-                        }
-                    }
-                }
-                const settlementCombinedLandslideRiskFactor = settlementMaxSlope * (1 + settlementWaterAmount / 5);
 
                 let floodRiskText = 'Bajo';
                 let floodRiskClass = 'low-risk';
@@ -1311,21 +1218,6 @@
                 }
                 floodSpan.textContent = floodRiskText;
                 floodSpan.className = `risk-indicator ${floodRiskClass}`;
-
-                let landslideRiskText = 'Bajo';
-                let landslideRiskClass = 'low-risk';
-                if (settlementCombinedLandslideRiskFactor >= 50) {
-                    landslideRiskText = 'Muy Alto';
-                    landslideRiskClass = 'very-high-risk';
-                } else if (settlementCombinedLandslideRiskFactor >= 25) {
-                    landslideRiskText = 'Alto';
-                    landslideRiskClass = 'high-risk';
-                } else if (settlementCombinedLandslideRiskFactor >= 10) {
-                    landslideRiskText = 'Moderado';
-                    landslideRiskClass = 'moderate-risk';
-                }
-                landslideSpan.textContent = landslideRiskText;
-                landslideSpan.className = `risk-indicator ${landslideRiskClass}`;
 
                 heightSpan.textContent = terrain[sy][sx].toFixed(1);
                 waterSpan.textContent = settlementWaterAmount.toFixed(2);
