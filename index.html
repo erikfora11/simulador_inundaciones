@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simulador de Inundaciones Optimizado</title>
+    <title>Simulador de Inundaciones Mejorado</title>
     <style>
         :root {
             --primary-bg: linear-gradient(135deg, #1a2a6c, #2a4365, #1c3f60);
@@ -343,21 +343,6 @@
             margin-top: 3px;
         }
 
-        .evaporation-indicator {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-top: 5px;
-        }
-
-        .indicator-dot {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            background: var(--highlight);
-            box-shadow: 0 0 8px var(--highlight);
-        }
-
         .balance-indicator {
             margin-top: 15px;
             padding: 10px;
@@ -400,14 +385,6 @@
             z-index: 10;
         }
 
-        .optimization-info {
-            margin-top: 10px;
-            padding: 10px;
-            background: rgba(0, 0, 0, 0.3);
-            border-radius: 4px;
-            font-size: 12px;
-        }
-
         @media (max-width: 900px) {
             .main-container {
                 flex-direction: column;
@@ -445,15 +422,14 @@
 </head>
 <body>
     <div class="header">
-        <h1>Simulador de Inundaciones Optimizado</h1>
-        <p class="subtitle">Simulación hidrológica con alto rendimiento</p>
+        <h1>Simulador de Riesgos Hidrológicos</h1>
+        <p class="subtitle">Monitoreo de inundaciones y derrumbes en tiempo real</p>
     </div>
 
     <div class="main-container">
         <div class="canvas-container">
             <div class="performance-panel">
-                FPS: <span id="fpsCounter">0</span> | Celdas: <span id="cellCounter">0</span>
-                <div class="optimization-info" id="optimizationStatus">Modo: Normal</div>
+                FPS: <span id="fpsCounter">0</span>
             </div>
             <canvas id="floodCanvas" width="500" height="500"></canvas>
         </div>
@@ -468,24 +444,11 @@
                 <p><strong>Riesgo de Inundación:</strong>
                     <span id="dashboardFloodRisk"></span>
                 </p>
+                <p><strong>Riesgo de Derrumbe:</strong>
+                    <span id="dashboardLandslideRisk"></span>
+                </p>
                 <p><strong>Altura:</strong> <span id="dashboardHeight"></span> m</p>
                 <p><strong>Agua acumulada:</strong> <span id="dashboardWater"></span> m</p>
-
-                <div class="status-bar">
-                    <div class="status-item">
-                        <span>Sin lluvia:</span>
-                        <span id="noRainTime" class="status-value">0s</span>
-                    </div>
-                    <div class="status-item">
-                        <span>Evaporación:</span>
-                        <span id="evaporationStatus" class="status-value">Normal</span>
-                    </div>
-                </div>
-
-                <div class="evaporation-indicator">
-                    <div class="indicator-dot"></div>
-                    <span>La evaporación aumenta después de 5s sin lluvia</span>
-                </div>
 
                 <div class="balance-indicator">
                     <div class="balance-label">Balance Agua/Evaporación:</div>
@@ -538,19 +501,18 @@
             </label>
             <label>
                 <input type="radio" name="viewMode" value="floodRisk">
-                Mapa de Riesgos de Inundación
+                Riesgo de Inundación
+            </label>
+            <label>
+                <input type="radio" name="viewMode" value="landslideRisk">
+                Riesgo de Derrumbe
             </label>
         </div>
     </div>
 
     <div class="info">
-        <strong>Optimizaciones activas:</strong> 
-        <ul>
-            <li>Mapa reducido para mejor rendimiento</li>
-            <li>Sistema de evaporación visual eliminado</li>
-            <li>Algoritmo de flujo optimizado</li>
-            <li>Modo de alta lluvia con cálculos simplificados</li>
-        </ul>
+        Haz clic en un asentamiento para ver su información detallada. 
+        Los niveles de riesgo se actualizan en tiempo real según las condiciones actuales.
     </div>
 
     <script>
@@ -561,17 +523,12 @@
         // Elementos de UI
         const toggleButton = document.getElementById('toggleButton');
         const resetButton = document.getElementById('resetButton');
-        const noRainTimeElement = document.getElementById('noRainTime');
-        const evaporationStatusElement = document.getElementById('evaporationStatus');
         const waterBalanceElement = document.getElementById('waterBalance');
         const fpsCounter = document.getElementById('fpsCounter');
-        const cellCounter = document.getElementById('cellCounter');
-        const optimizationStatus = document.getElementById('optimizationStatus');
 
-        // Reducir el tamaño de la cuadrícula para mejorar el rendimiento
-        const gridSize = 70;  // Reducido de 100 a 70 (4900 celdas en lugar de 10000)
+        // Tamaño de la cuadrícula optimizado
+        const gridSize = 70;
         const cellSize = canvas.width / gridSize;
-        cellCounter.textContent = `${gridSize}x${gridSize}`;
 
         // Arrays 2D para almacenar el estado de la simulación
         let terrain = new Array(gridSize);
@@ -587,7 +544,7 @@
             humidity[i] = new Float32Array(gridSize);
         }
 
-        // Variables para el sistema de evaporación mejorado
+        // Variables para el sistema de evaporación
         let timeWithoutRain = 0;
         let evaporationMultiplier = 1.0;
         const SIGNIFICANT_RAIN_THRESHOLD = 0.01;
@@ -623,10 +580,8 @@
         let currentViewMode = 'normal';
 
         // Rendimiento
-        let lastFrameTime = 0;
         let frameCount = 0;
         let lastFpsUpdate = 0;
-        let optimizationMode = 'normal'; // 'normal' o 'high_rain'
 
         // --- Implementación de Ruido Perlin (Simplified) ---
         const P = new Array(512);
@@ -684,10 +639,6 @@
         document.getElementById('rainIntensity').addEventListener('input', (e) => {
             rainIntensity = parseFloat(e.target.value);
             document.getElementById('rainValue').textContent = rainIntensity.toFixed(2);
-            
-            // Cambiar modo de optimización basado en intensidad de lluvia
-            optimizationMode = rainIntensity > 0.3 ? 'high_rain' : 'normal';
-            optimizationStatus.textContent = `Modo: ${optimizationMode === 'high_rain' ? 'Alta Lluvia' : 'Normal'}`;
         });
 
         document.getElementById('evaporationRate').addEventListener('input', (e) => {
@@ -742,19 +693,16 @@
 
         // Definir paradas de color para la visualización de la altura del terreno
         const terrainColorStops = [
-            { height: 0, color: [52, 135, 52] },
-            { height: 20, color: [85, 107, 47] },
-            { height: 40, color: [160, 82, 45] },
-            { height: 60, color: [128, 128, 128] },
-            { height: 80, color: [240, 248, 255] }
+            { height: 0, color: [52, 135, 52] },    // Verde (tierras bajas)
+            { height: 20, color: [85, 107, 47] },   // Verde oliva
+            { height: 40, color: [160, 82, 45] },   // Siena (colinas)
+            { height: 60, color: [128, 128, 128] }, // Gris (montañas)
+            { height: 80, color: [240, 248, 255] }  // Blanco (picos nevados)
         ];
 
-        // --- Dibujo de la Cuadrícula en el Canvas con LOD ---
+        // --- Dibujo de la Cuadrícula en el Canvas ---
         function drawGrid() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            // En modo alta lluvia, simplificamos el dibujo del agua
-            const isHighRainMode = optimizationMode === 'high_rain';
 
             for (let y = 0; y < gridSize; y++) {
                 for (let x = 0; x < gridSize; x++) {
@@ -785,19 +733,9 @@
                             ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
 
                             if (water[y][x] > 0.005) {
-                                // En modo alta lluvia, dibujamos un azul más simple
-                                if (isHighRainMode) {
-                                    const blueIntensity = Math.min(255, 100 + water[y][x] * 10);
-                                    const alpha = Math.min(0.7, water[y][x] / 15);
-                                    ctx.fillStyle = `rgba(0, 0, ${blueIntensity}, ${alpha})`;
-                                } else {
-                                    const fullOpacityDepth = 15;
-                                    const maxWaterAlpha = 0.7;
-
-                                    const blueIntensity = Math.floor(100 + Math.min(1, water[y][x] / fullOpacityDepth) * 155);
-                                    const alpha = Math.min(1, water[y][x] / fullOpacityDepth) * maxWaterAlpha;
-                                    ctx.fillStyle = `rgba(0, 0, ${blueIntensity}, ${alpha})`;
-                                }
+                                const blueIntensity = Math.floor(100 + Math.min(1, water[y][x] / 15) * 155);
+                                const alpha = Math.min(1, water[y][x] / 15) * 0.7;
+                                ctx.fillStyle = `rgba(0, 0, ${blueIntensity}, ${alpha})`;
                                 ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
                             }
                             break;
@@ -807,79 +745,156 @@
                             const waterDepth = water[y][x];
 
                             if (waterDepth < 1) {
-                                floodRiskColor = '#90EE90';
+                                floodRiskColor = '#90EE90'; // Verde (bajo riesgo)
                             } else if (waterDepth < 5) {
-                                floodRiskColor = '#FFFF00';
+                                floodRiskColor = '#FFFF00'; // Amarillo (moderado)
                             } else if (waterDepth < 10) {
-                                floodRiskColor = '#FFA500';
+                                floodRiskColor = '#FFA500'; // Naranja (alto)
                             } else {
-                                floodRiskColor = '#FF0000';
+                                floodRiskColor = '#FF0000'; // Rojo (muy alto)
                             }
                             ctx.fillStyle = floodRiskColor;
+                            ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+                            break;
+                            
+                        case 'landslideRisk':
+                            let landslideRiskColor = '#E0E0E0';
+                            const currentTerrainHeight = terrain[y][x];
+                            let maxSlope = 0;
+
+                            for (let dy = -1; dy <= 1; dy++) {
+                                for (let dx = -1; dx <= 1; dx++) {
+                                    if (dx === 0 && dy === 0) continue;
+
+                                    const nx = x + dx;
+                                    const ny = y + dy;
+
+                                    if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize) {
+                                        const neighborTerrainHeight = terrain[ny][nx];
+                                        const slope = Math.abs(currentTerrainHeight - neighborTerrainHeight);
+                                        if (slope > maxSlope) {
+                                            maxSlope = slope;
+                                        }
+                                    }
+                                }
+                            }
+
+                            const waterAmount = water[y][x];
+
+                            if (waterAmount > 0.1) {
+                                const combinedRiskFactor = maxSlope * (1 + waterAmount / 5);
+
+                                if (combinedRiskFactor < 10) {
+                                    landslideRiskColor = '#90EE90'; // Verde (bajo)
+                                } else if (combinedRiskFactor < 25) {
+                                    landslideRiskColor = '#FFFF00'; // Amarillo (moderado)
+                                } else if (combinedRiskFactor < 50) {
+                                    landslideRiskColor = '#FFA500'; // Naranja (alto)
+                                } else {
+                                    landslideRiskColor = '#FF0000'; // Rojo (muy alto)
+                                }
+                            }
+                            ctx.fillStyle = landslideRiskColor;
                             ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
                             break;
                     }
                 }
             }
 
-            // Dibujar Asentamientos
+            // MEJORA: Íconos de asentamientos más grandes y visibles
             for (const settlement of settlements) {
                 const sx = settlement.x;
                 const sy = settlement.y;
 
                 const settlementWaterAmount = water[sy][sx];
-                
-                let settlementRiskColor = 'green';
-                let symbolSize = cellSize * 0.6;
-                let alertLevelText = 'Bajo';
-
-                if (settlementWaterAmount >= 10) {
-                    settlementRiskColor = 'red';
-                    symbolSize = cellSize * 0.8;
-                    alertLevelText = 'Muy Alto';
-                } else if (settlementWaterAmount >= 5) {
-                    settlementRiskColor = 'orange';
-                    symbolSize = cellSize * 0.7;
-                    alertLevelText = 'Alto';
-                } else if (settlementWaterAmount >= 1) {
-                    settlementRiskColor = 'yellow';
-                    symbolSize = cellSize * 0.65;
-                    alertLevelText = 'Moderado';
+                let settlementMaxSlope = 0;
+                for (let dy = -1; dy <= 1; dy++) {
+                    for (let dx = -1; dx <= 1; dx++) {
+                        if (dx === 0 && dy === 0) continue;
+                        const nx = sx + dx;
+                        const ny = sy + dy;
+                        if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize) {
+                            const neighborTerrainHeight = terrain[ny][nx];
+                            const slope = Math.abs(terrain[sy][sx] - neighborTerrainHeight);
+                            if (slope > settlementMaxSlope) {
+                                settlementMaxSlope = slope;
+                            }
+                        }
+                    }
                 }
+                const settlementCombinedLandslideRiskFactor = settlementMaxSlope * (1 + settlementWaterAmount / 5);
 
+                // Determinar nivel de riesgo general
+                let riskLevel = 'low';
+                if (settlementWaterAmount >= 10 || settlementCombinedLandslideRiskFactor >= 50) {
+                    riskLevel = 'very-high';
+                } else if (settlementWaterAmount >= 5 || settlementCombinedLandslideRiskFactor >= 25) {
+                    riskLevel = 'high';
+                } else if (settlementWaterAmount >= 1 || settlementCombinedLandslideRiskFactor >= 10) {
+                    riskLevel = 'moderate';
+                }
+                
+                // Colores según nivel de riesgo
+                const colors = {
+                    'low': '#2ecc71',       // Verde
+                    'moderate': '#f1c40f',  // Amarillo
+                    'high': '#e67e22',      // Naranja
+                    'very-high': '#e74c3c'  // Rojo
+                };
+                
+                const iconColor = colors[riskLevel];
+                const isSelected = selectedSettlement && selectedSettlement.x === sx && selectedSettlement.y === sy;
+                
+                // MEJORA: Íconos más grandes (de 0.7 a 0.85)
+                const iconSize = cellSize * 0.85;
+                const centerX = sx * cellSize + cellSize / 2;
+                const centerY = sy * cellSize + cellSize / 2;
+                
+                // Base de la casa (más grande)
+                ctx.fillStyle = iconColor;
+                ctx.fillRect(
+                    centerX - iconSize/2, 
+                    centerY - iconSize/3, 
+                    iconSize, 
+                    iconSize * 0.66
+                );
+                
+                // Techo (más grande)
                 ctx.beginPath();
-                ctx.arc(sx * cellSize + cellSize / 2, sy * cellSize + cellSize / 2, symbolSize / 2, 0, Math.PI * 2);
-                ctx.fillStyle = settlementRiskColor;
+                ctx.moveTo(centerX - iconSize/2, centerY - iconSize/3);
+                ctx.lineTo(centerX, centerY - iconSize/1.5);
+                ctx.lineTo(centerX + iconSize/2, centerY - iconSize/3);
+                ctx.closePath();
+                ctx.fillStyle = '#8B4513'; // Marrón para el techo
                 ctx.fill();
-
-                if (selectedSettlement && selectedSettlement.x === sx && selectedSettlement.y === sy) {
+                
+                // Ventana (más grande)
+                ctx.fillStyle = '#87CEEB';
+                ctx.fillRect(
+                    centerX - iconSize/4, 
+                    centerY - iconSize/6, 
+                    iconSize/2, 
+                    iconSize/3
+                );
+                
+                // Resaltar si está seleccionado (más visible)
+                if (isSelected) {
                     ctx.strokeStyle = 'cyan';
                     ctx.lineWidth = 3;
-                } else {
-                    ctx.strokeStyle = 'black';
-                    ctx.lineWidth = 1;
+                    ctx.strokeRect(
+                        centerX - iconSize/2 - 2, 
+                        centerY - iconSize/3 - 2, 
+                        iconSize + 4, 
+                        iconSize * 0.66 + 4
+                    );
                 }
-                ctx.stroke();
-
-                ctx.fillStyle = 'black';
-                ctx.font = `bold ${cellSize * 0.2}px Arial`;
+                
+                // Nombre del asentamiento (más legible)
+                ctx.fillStyle = 'white';
+                ctx.font = `bold ${cellSize * 0.22}px Arial`;
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'bottom';
-                ctx.fillText(settlement.name, sx * cellSize + cellSize / 2, sy * cellSize + cellSize / 2 - symbolSize / 2 - 2);
-
-                ctx.fillStyle = settlementRiskColor;
-                ctx.font = `bold ${cellSize * 0.25}px Arial`;
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'top';
-                ctx.fillText(alertLevelText, sx * cellSize + cellSize / 2, sy * cellSize + cellSize / 2 + symbolSize / 2 + 2);
-
-                if (settlementRiskColor === 'red' || settlementRiskColor === 'orange') {
-                    ctx.fillStyle = 'white';
-                    ctx.font = `bold ${symbolSize * 0.6}px Arial`;
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillText('!', sx * cellSize + cellSize / 2, sy * cellSize + cellSize / 2);
-                }
+                ctx.fillText(settlement.name, centerX, centerY - iconSize/1.5 - 5);
             }
         }
 
@@ -897,17 +912,6 @@
                 evaporationMultiplier = 1.0;
             }
 
-            // Actualizar UI con información de evaporación
-            noRainTimeElement.textContent = (timeWithoutRain / 1000).toFixed(1) + 's';
-
-            if (evaporationMultiplier > 1.0) {
-                evaporationStatusElement.textContent = 'Aumentada (' + evaporationMultiplier.toFixed(1) + 'x)';
-                evaporationStatusElement.className = 'status-value';
-            } else {
-                evaporationStatusElement.textContent = 'Normal';
-                evaporationStatusElement.className = 'status-value';
-            }
-
             // Calcular el agua total antes de aplicar cambios
             previousTotalWater = totalWater;
             totalWater = 0;
@@ -919,7 +923,7 @@
                 }
             }
 
-            // 2. Aplicar evaporación optimizada (sin efectos visuales)
+            // 2. Aplicar evaporación
             const baseEvaporation = evaporationRate * evaporationMultiplier;
             for (let y = 0; y < gridSize; y++) {
                 for (let x = 0; x < gridSize; x++) {
@@ -939,13 +943,12 @@
                 }
             }
 
-            // 4. Optimized Water Flow - ¡Aquí está la optimización principal!
+            // MEJORA: Flujo de agua más suave con parámetros optimizados
             const K_MIN_SLOPE = 0.001;
-            const K_FLOW_RATE = optimizationMode === 'high_rain' ? 0.2 : 0.4;
-            const MAX_FLOW_FRACTION = optimizationMode === 'high_rain' ? 0.2 : 0.4;
+            const K_FLOW_RATE = 0.25; // Reducido para menos "jitter"
+            const MAX_FLOW_FRACTION = 0.35; // Reducido para flujo más estable
             let waterFlux = Array(gridSize).fill(0).map(() => Array(gridSize).fill(0));
 
-            // Solo vecinos directos (arriba, abajo, izquierda, derecha) - reduce cálculos
             const neighbors = [
                 { dx: 0, dy: -1 }, 
                 { dx: 0, dy: 1 }, 
@@ -978,7 +981,6 @@
                     }
 
                     if (totalPossibleFlow > 0) {
-                        // Limitar la cantidad de agua a mover a una fracción del total disponible
                         const waterToDistribute = Math.min(prevWater[y][x] * MAX_FLOW_FRACTION, prevWater[y][x]);
                         
                         for (const flowInfo of flowDirections) {
@@ -1016,9 +1018,9 @@
                 }
             }
 
-            // 6. Relajación/Difusión simplificada (reducimos iteraciones)
-            const relaxationIterations = optimizationMode === 'high_rain' ? 1 : 2;
-            const relaxationFactor = 0.05;
+            // MEJORA: Relajación más suave con parámetros optimizados
+            const relaxationIterations = 3; // Aumentado para más estabilidad
+            const relaxationFactor = 0.03; // Reducido para menos fluctuaciones
 
             for (let iter = 0; iter < relaxationIterations; iter++) {
                 let heightChanges = Array(gridSize).fill(0).map(() => Array(gridSize).fill(0));
@@ -1058,7 +1060,7 @@
                 }
             }
 
-            // 7. Actualización y Difusión de Humedad
+            // 7. Actualización de humedad
             const humidityUpdateRate = 0.05;
             for (let y = 0; y < gridSize; y++) {
                 for (let x = 0; x < gridSize; x++) {
@@ -1107,10 +1109,10 @@
             const waterChange = totalWater - previousTotalWater;
 
             if (waterChange < -0.1) {
-                waterBalanceElement.textContent = "Evaporando (" + waterChange.toFixed(2) + ")";
+                waterBalanceElement.textContent = "Evaporando";
                 waterBalanceElement.className = "balance-value evaporating";
             } else if (waterChange > 0.1) {
-                waterBalanceElement.textContent = "Acumulando (+" + waterChange.toFixed(2) + ")";
+                waterBalanceElement.textContent = "Acumulando";
                 waterBalanceElement.className = "balance-value accumulating";
             } else {
                 waterBalanceElement.textContent = "Balanceado";
@@ -1192,6 +1194,7 @@
             const infoDiv = document.getElementById('settlementInfo');
             const nameSpan = document.getElementById('dashboardSettlementName');
             const floodSpan = document.getElementById('dashboardFloodRisk');
+            const landslideSpan = document.getElementById('dashboardLandslideRisk');
             const heightSpan = document.getElementById('dashboardHeight');
             const waterSpan = document.getElementById('dashboardWater');
 
@@ -1203,6 +1206,22 @@
                 const sx = selectedSettlement.x;
                 const sy = selectedSettlement.y;
                 const settlementWaterAmount = water[sy][sx];
+                let settlementMaxSlope = 0;
+                for (let dy = -1; dy <= 1; dy++) {
+                    for (let dx = -1; dx <= 1; dx++) {
+                        if (dx === 0 && dy === 0) continue;
+                        const nx = sx + dx;
+                        const ny = sy + dy;
+                        if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize) {
+                            const neighborTerrainHeight = terrain[ny][nx];
+                            const slope = Math.abs(terrain[sy][sx] - neighborTerrainHeight);
+                            if (slope > settlementMaxSlope) {
+                                settlementMaxSlope = slope;
+                            }
+                        }
+                    }
+                }
+                const settlementCombinedLandslideRiskFactor = settlementMaxSlope * (1 + settlementWaterAmount / 5);
 
                 let floodRiskText = 'Bajo';
                 let floodRiskClass = 'low-risk';
@@ -1218,6 +1237,21 @@
                 }
                 floodSpan.textContent = floodRiskText;
                 floodSpan.className = `risk-indicator ${floodRiskClass}`;
+
+                let landslideRiskText = 'Bajo';
+                let landslideRiskClass = 'low-risk';
+                if (settlementCombinedLandslideRiskFactor >= 50) {
+                    landslideRiskText = 'Muy Alto';
+                    landslideRiskClass = 'very-high-risk';
+                } else if (settlementCombinedLandslideRiskFactor >= 25) {
+                    landslideRiskText = 'Alto';
+                    landslideRiskClass = 'high-risk';
+                } else if (settlementCombinedLandslideRiskFactor >= 10) {
+                    landslideRiskText = 'Moderado';
+                    landslideRiskClass = 'moderate-risk';
+                }
+                landslideSpan.textContent = landslideRiskText;
+                landslideSpan.className = `risk-indicator ${landslideRiskClass}`;
 
                 heightSpan.textContent = terrain[sy][sx].toFixed(1);
                 waterSpan.textContent = settlementWaterAmount.toFixed(2);
@@ -1235,7 +1269,7 @@
             const clickY = e.clientY - rect.top;
 
             let clickedSettlementFound = false;
-            const clickRadius = cellSize * 0.7;
+            const clickRadius = cellSize * 0.85; // Ajustado al nuevo tamaño de íconos
 
             for (const settlement of settlements) {
                 const settlementCenterX = settlement.x * cellSize + cellSize / 2;
