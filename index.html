@@ -3,7 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simulador de Inundaciones Mejorado</title>
     <style>
         :root {
             --primary-bg: linear-gradient(135deg, #1a2a6c, #2a4365, #1c3f60);
@@ -801,38 +800,73 @@
                 }
             }
 
-            // MEJORA: Íconos de asentamientos más grandes y visibles
+            // Íconos de asentamientos más grandes
             for (const settlement of settlements) {
                 const sx = settlement.x;
                 const sy = settlement.y;
 
-                const settlementWaterAmount = water[sy][sx];
-                let settlementMaxSlope = 0;
-                for (let dy = -1; dy <= 1; dy++) {
-                    for (let dx = -1; dx <= 1; dx++) {
-                        if (dx === 0 && dy === 0) continue;
-                        const nx = sx + dx;
-                        const ny = sy + dy;
-                        if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize) {
-                            const neighborTerrainHeight = terrain[ny][nx];
-                            const slope = Math.abs(terrain[sy][sx] - neighborTerrainHeight);
-                            if (slope > settlementMaxSlope) {
-                                settlementMaxSlope = slope;
+                // Usar valores suavizados para los cálculos de riesgo
+                const settlementWaterAmount = settlement.smoothedWater || water[sy][sx];
+                let settlementMaxSlope = settlement.maxSlope || 0;
+                
+                // Solo recalcular pendiente si es necesario
+                if (!settlement.maxSlope) {
+                    for (let dy = -1; dy <= 1; dy++) {
+                        for (let dx = -1; dx <= 1; dx++) {
+                            if (dx === 0 && dy === 0) continue;
+                            const nx = sx + dx;
+                            const ny = sy + dy;
+                            if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize) {
+                                const neighborTerrainHeight = terrain[ny][nx];
+                                const slope = Math.abs(terrain[sy][sx] - neighborTerrainHeight);
+                                if (slope > settlementMaxSlope) {
+                                    settlementMaxSlope = slope;
+                                }
                             }
                         }
                     }
+                    settlement.maxSlope = settlementMaxSlope;
                 }
-                const settlementCombinedLandslideRiskFactor = settlementMaxSlope * (1 + settlementWaterAmount / 5);
+                
+                const settlementCombinedLandslideRiskFactor = settlement.smoothedLandslideRisk || 
+                    (settlementMaxSlope * (1 + settlementWaterAmount / 5));
 
-                // Determinar nivel de riesgo general
-                let riskLevel = 'low';
+                // Determinar nivel de riesgo general con histéresis
+                let riskLevel = settlement.riskLevel || 'low';
+                
+                // Histéresis para evitar cambios frecuentes
                 if (settlementWaterAmount >= 10 || settlementCombinedLandslideRiskFactor >= 50) {
                     riskLevel = 'very-high';
                 } else if (settlementWaterAmount >= 5 || settlementCombinedLandslideRiskFactor >= 25) {
-                    riskLevel = 'high';
+                    if (riskLevel === 'very-high') {
+                        // Solo cambia a alto si baja del umbral muy alto
+                        if (settlementWaterAmount < 9 && settlementCombinedLandslideRiskFactor < 45) {
+                            riskLevel = 'high';
+                        }
+                    } else {
+                        riskLevel = 'high';
+                    }
                 } else if (settlementWaterAmount >= 1 || settlementCombinedLandslideRiskFactor >= 10) {
-                    riskLevel = 'moderate';
+                    if (riskLevel === 'high' || riskLevel === 'very-high') {
+                        // Solo cambia a moderado si baja del umbral alto
+                        if (settlementWaterAmount < 4.5 && settlementCombinedLandslideRiskFactor < 22) {
+                            riskLevel = 'moderate';
+                        }
+                    } else {
+                        riskLevel = 'moderate';
+                    }
+                } else {
+                    if (riskLevel === 'moderate' || riskLevel === 'high' || riskLevel === 'very-high') {
+                        // Solo cambia a bajo si baja del umbral moderado
+                        if (settlementWaterAmount < 0.8 && settlementCombinedLandslideRiskFactor < 8) {
+                            riskLevel = 'low';
+                        }
+                    } else {
+                        riskLevel = 'low';
+                    }
                 }
+                
+                settlement.riskLevel = riskLevel;
                 
                 // Colores según nivel de riesgo
                 const colors = {
@@ -845,12 +879,12 @@
                 const iconColor = colors[riskLevel];
                 const isSelected = selectedSettlement && selectedSettlement.x === sx && selectedSettlement.y === sy;
                 
-                // MEJORA: Íconos más grandes (de 0.7 a 0.85)
+                // Íconos más grandes (0.85 del tamaño de celda)
                 const iconSize = cellSize * 0.85;
                 const centerX = sx * cellSize + cellSize / 2;
                 const centerY = sy * cellSize + cellSize / 2;
                 
-                // Base de la casa (más grande)
+                // Base de la casa
                 ctx.fillStyle = iconColor;
                 ctx.fillRect(
                     centerX - iconSize/2, 
@@ -859,7 +893,7 @@
                     iconSize * 0.66
                 );
                 
-                // Techo (más grande)
+                // Techo
                 ctx.beginPath();
                 ctx.moveTo(centerX - iconSize/2, centerY - iconSize/3);
                 ctx.lineTo(centerX, centerY - iconSize/1.5);
@@ -868,7 +902,7 @@
                 ctx.fillStyle = '#8B4513'; // Marrón para el techo
                 ctx.fill();
                 
-                // Ventana (más grande)
+                // Ventana
                 ctx.fillStyle = '#87CEEB';
                 ctx.fillRect(
                     centerX - iconSize/4, 
@@ -877,7 +911,7 @@
                     iconSize/3
                 );
                 
-                // Resaltar si está seleccionado (más visible)
+                // Resaltar si está seleccionado
                 if (isSelected) {
                     ctx.strokeStyle = 'cyan';
                     ctx.lineWidth = 3;
@@ -889,7 +923,7 @@
                     );
                 }
                 
-                // Nombre del asentamiento (más legible)
+                // Nombre del asentamiento
                 ctx.fillStyle = 'white';
                 ctx.font = `bold ${cellSize * 0.22}px Arial`;
                 ctx.textAlign = 'center';
@@ -943,10 +977,10 @@
                 }
             }
 
-            // MEJORA: Flujo de agua más suave con parámetros optimizados
+            // Flujo de agua más suave
             const K_MIN_SLOPE = 0.001;
-            const K_FLOW_RATE = 0.25; // Reducido para menos "jitter"
-            const MAX_FLOW_FRACTION = 0.35; // Reducido para flujo más estable
+            const K_FLOW_RATE = 0.25;
+            const MAX_FLOW_FRACTION = 0.35;
             let waterFlux = Array(gridSize).fill(0).map(() => Array(gridSize).fill(0));
 
             const neighbors = [
@@ -1018,9 +1052,9 @@
                 }
             }
 
-            // MEJORA: Relajación más suave con parámetros optimizados
-            const relaxationIterations = 3; // Aumentado para más estabilidad
-            const relaxationFactor = 0.03; // Reducido para menos fluctuaciones
+            // Relajación más suave
+            const relaxationIterations = 3;
+            const relaxationFactor = 0.03;
 
             for (let iter = 0; iter < relaxationIterations; iter++) {
                 let heightChanges = Array(gridSize).fill(0).map(() => Array(gridSize).fill(0));
@@ -1070,6 +1104,48 @@
                         humidity[y][x] = Math.max(1, humidity[y][x] - humidityUpdateRate);
                     }
                 }
+            }
+
+            // Actualizar valores suavizados para los asentamientos
+            for (const settlement of settlements) {
+                const sx = settlement.x;
+                const sy = settlement.y;
+                const currentWater = water[sy][sx];
+                
+                // Inicializar si es la primera vez
+                if (settlement.smoothedWater === undefined) {
+                    settlement.smoothedWater = currentWater;
+                }
+                if (settlement.smoothedLandslideRisk === undefined) {
+                    settlement.smoothedLandslideRisk = 0;
+                }
+                
+                // Suavizado exponencial para el agua
+                settlement.smoothedWater = 0.8 * settlement.smoothedWater + 0.2 * currentWater;
+                
+                // Calcular el factor de riesgo de derrumbe actual
+                let settlementMaxSlope = settlement.maxSlope || 0;
+                if (!settlement.maxSlope) {
+                    for (let dy = -1; dy <= 1; dy++) {
+                        for (let dx = -1; dx <= 1; dx++) {
+                            if (dx === 0 && dy === 0) continue;
+                            const nx = sx + dx;
+                            const ny = sy + dy;
+                            if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize) {
+                                const neighborTerrainHeight = terrain[ny][nx];
+                                const slope = Math.abs(terrain[sy][sx] - neighborTerrainHeight);
+                                if (slope > settlementMaxSlope) {
+                                    settlementMaxSlope = slope;
+                                }
+                            }
+                        }
+                    }
+                    settlement.maxSlope = settlementMaxSlope;
+                }
+                const currentLandslideRiskFactor = settlementMaxSlope * (1 + currentWater / 5);
+                
+                // Suavizado para el riesgo de derrumbe
+                settlement.smoothedLandslideRisk = 0.8 * settlement.smoothedLandslideRisk + 0.2 * currentLandslideRiskFactor;
             }
 
             // Update total water
@@ -1183,7 +1259,15 @@
                     continue;
                 }
 
-                settlements.push({ x, y, name: getRandomSettlementName() });
+                settlements.push({ 
+                    x, 
+                    y, 
+                    name: getRandomSettlementName(),
+                    maxSlope: 0,
+                    smoothedWater: 0,
+                    smoothedLandslideRisk: 0,
+                    riskLevel: 'low'
+                });
                 placedCount++;
             }
         }
@@ -1205,26 +1289,15 @@
 
                 const sx = selectedSettlement.x;
                 const sy = selectedSettlement.y;
-                const settlementWaterAmount = water[sy][sx];
-                let settlementMaxSlope = 0;
-                for (let dy = -1; dy <= 1; dy++) {
-                    for (let dx = -1; dx <= 1; dx++) {
-                        if (dx === 0 && dy === 0) continue;
-                        const nx = sx + dx;
-                        const ny = sy + dy;
-                        if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize) {
-                            const neighborTerrainHeight = terrain[ny][nx];
-                            const slope = Math.abs(terrain[sy][sx] - neighborTerrainHeight);
-                            if (slope > settlementMaxSlope) {
-                                settlementMaxSlope = slope;
-                            }
-                        }
-                    }
-                }
-                const settlementCombinedLandslideRiskFactor = settlementMaxSlope * (1 + settlementWaterAmount / 5);
+                
+                // Usar valores suavizados para el dashboard
+                const settlementWaterAmount = selectedSettlement.smoothedWater;
+                const settlementCombinedLandslideRiskFactor = selectedSettlement.smoothedLandslideRisk;
 
+                // Determinar riesgo de inundación con histéresis
                 let floodRiskText = 'Bajo';
                 let floodRiskClass = 'low-risk';
+                
                 if (settlementWaterAmount >= 10) {
                     floodRiskText = 'Muy Alto';
                     floodRiskClass = 'very-high-risk';
@@ -1235,11 +1308,14 @@
                     floodRiskText = 'Moderado';
                     floodRiskClass = 'moderate-risk';
                 }
+                
                 floodSpan.textContent = floodRiskText;
                 floodSpan.className = `risk-indicator ${floodRiskClass}`;
 
+                // Determinar riesgo de derrumbe con histéresis
                 let landslideRiskText = 'Bajo';
                 let landslideRiskClass = 'low-risk';
+                
                 if (settlementCombinedLandslideRiskFactor >= 50) {
                     landslideRiskText = 'Muy Alto';
                     landslideRiskClass = 'very-high-risk';
@@ -1250,6 +1326,7 @@
                     landslideRiskText = 'Moderado';
                     landslideRiskClass = 'moderate-risk';
                 }
+                
                 landslideSpan.textContent = landslideRiskText;
                 landslideSpan.className = `risk-indicator ${landslideRiskClass}`;
 
@@ -1269,7 +1346,7 @@
             const clickY = e.clientY - rect.top;
 
             let clickedSettlementFound = false;
-            const clickRadius = cellSize * 0.85; // Ajustado al nuevo tamaño de íconos
+            const clickRadius = cellSize * 0.85;
 
             for (const settlement of settlements) {
                 const settlementCenterX = settlement.x * cellSize + cellSize / 2;
